@@ -399,6 +399,7 @@ class AquaTempConfigManager:
                     name=data_item.get("name"),
                     device_class=data_item.get("device_class"),
                     native_unit_of_measurement=data_item.get("unit_of_measurement"),
+                    state_class=data_item.get("state_class"),
                     entity_category=EntityCategory.DIAGNOSTIC,
                     translation_key=translation_key,
                 )
