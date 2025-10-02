@@ -646,5 +646,45 @@
     "platform": "sensor",
     "device_class": null,
     "unit_of_measurement": null
+  },
+  {
+    "key": "Z04",
+    "name": "Actual Power [Z04]",
+    "platform": "sensor",
+    "device_class": "power",
+    "state_class": "measurement",
+    "unit_of_measurement": "W"
+  },
+  {
+    "key": "Z06",
+    "name": "Cumulative Power Consumption [Z06]",
+    "platform": "sensor",
+    "device_class": "energy",
+    "state_class": "total_increasing",
+    "unit_of_measurement": "kWh"
+  },
+  {
+    "key": "Z06_L",
+    "name": "Cumulative Power Consumption Low [Z06_L]",
+    "platform": "sensor",
+    "device_class": "energy",
+    "state_class": "total_increasing",
+    "unit_of_measurement": "kWh"
+  },
+  {
+    "key": "Z07",
+    "name": "Electricity Consumption per Hour [Z07]",
+    "platform": "sensor",
+    "device_class": "energy",
+    "state_class": "total",
+    "unit_of_measurement": "kWh"
+  },
+  {
+    "key": "Z08",
+    "name": "Compressor Operational Time [Z08]",
+    "platform": "sensor",
+    "device_class": "duration",
+    "state_class": "total_increasing",
+    "unit_of_measurement": "h"
   }
 ]

@@ -41,6 +41,7 @@ class AquaTempSensorEntityDescription(
     SensorEntityDescription, AquaTempEntityDescription
 ):
     platform: Platform | None = Platform.SENSOR
+    state_class: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
