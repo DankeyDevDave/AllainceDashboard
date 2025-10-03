@@ -1,0 +1,605 @@
+{
+  "dashboard": {
+    "title": "Aloha Pool - Heat Pump Performance & COP Analysis",
+    "tags": ["aloha", "pool", "heat-pump", "cop", "swim-school"],
+    "timezone": "Africa/Johannesburg",
+    "editable": true,
+    "refresh": "1m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "flow_rate",
+          "label": "Flow Rate (L/min)",
+          "type": "custom",
+          "query": "60,80,100,120,150",
+          "current": {"text": "100", "value": "100"},
+          "options": [
+            {"text": "60", "value": "60"},
+            {"text": "80", "value": "80"},
+            {"text": "100", "value": "100", "selected": true},
+            {"text": "120", "value": "120"},
+            {"text": "150", "value": "150"}
+          ]
+        },
+        {
+          "name": "pool_volume",
+          "label": "Pool Volume (m³)",
+          "type": "custom",
+          "query": "100,150,200,250,300,400,500",
+          "current": {"text": "200", "value": "200"},
+          "options": [
+            {"text": "100", "value": "100"},
+            {"text": "150", "value": "150"},
+            {"text": "200", "value": "200", "selected": true},
+            {"text": "250", "value": "250"},
+            {"text": "300", "value": "300"},
+            {"text": "400", "value": "400"},
+            {"text": "500", "value": "500"}
+          ]
+        },
+        {
+          "name": "regular_tariff",
+          "label": "Regular Tariff (R/kWh)",
+          "type": "custom",
+          "query": "1.50,2.00,2.50,3.00",
+          "current": {"text": "2.50", "value": "2.50"},
+          "options": [
+            {"text": "1.50", "value": "1.50"},
+            {"text": "2.00", "value": "2.00"},
+            {"text": "2.50", "value": "2.50", "selected": true},
+            {"text": "3.00", "value": "3.00"}
+          ]
+        },
+        {
+          "name": "low_tariff",
+          "label": "Low Tariff (R/kWh)",
+          "type": "custom",
+          "query": "0.80,1.00,1.20,1.50",
+          "current": {"text": "1.00", "value": "1.00"},
+          "options": [
+            {"text": "0.80", "value": "0.80"},
+            {"text": "1.00", "value": "1.00", "selected": true},
+            {"text": "1.20", "value": "1.20"},
+            {"text": "1.50", "value": "1.50"}
+          ]
+        },
+        {
+          "name": "interval",
+          "label": "Aggregation",
+          "type": "interval",
+          "auto": true,
+          "auto_count": 30,
+          "auto_min": "1m",
+          "query": "1m,5m,15m,30m,1h",
+          "current": {"text": "auto", "value": "$__auto_interval_interval"}
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "COP Now",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "// Power in kW\npower = from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /actual_power_z04/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))\n  |> yield(name: \"power_kw\")\n\n// Delta T\ninlet = from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n\noutlet = from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /outlet_water_temp_t03/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n\n// Heat output kW = 0.0698 × flow_Lmin × ΔT\nheat_kw = join(\n  left: inlet,\n  right: outlet,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: 0.0698 * ${flow_rate} * (r._value - l._value)\n  })\n)\n|> yield(name: \"heat_kw\")"
+        }],
+        "transformations": [
+          {
+            "id": "calculateField",
+            "options": {
+              "mode": "binary",
+              "reduce": {"reducer": "lastNotNull"},
+              "binary": {
+                "left": "heat_kw",
+                "operator": "/",
+                "right": "power_kw"
+              },
+              "alias": "COP"
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 3, "color": "yellow"},
+                {"value": 4, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "graphMode": "area",
+          "colorMode": "background",
+          "textMode": "value"
+        }
+      },
+      {
+        "id": 2,
+        "title": "COP 24h Average",
+        "type": "stat",
+        "gridPos": {"x": 4, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "// Energy consumed today (kWh)\nenergy = from(bucket: \"homeassistant\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 24h, fn: spread)\n  |> yield(name: \"elec_kwh\")\n\n// Heat delivered (approximate from avg delta T)\ninlet = from(bucket: \"homeassistant\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\noutlet = from(bucket: \"homeassistant\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /outlet_water_temp_t03/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\njoin(\n  left: inlet,\n  right: outlet,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: 0.0698 * ${flow_rate} * (r._value - l._value)\n  })\n)\n|> integral(unit: 1h)\n|> map(fn: (r) => ({r with _value: r._value / 3600.0}))\n|> yield(name: \"heat_kwh\")"
+        }],
+        "transformations": [
+          {
+            "id": "calculateField",
+            "options": {
+              "mode": "binary",
+              "binary": {
+                "left": "heat_kwh",
+                "operator": "/",
+                "right": "elec_kwh"
+              },
+              "alias": "COP 24h"
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 3, "color": "yellow"},
+                {"value": 4, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "background"}
+      },
+      {
+        "id": 3,
+        "title": "COP 7d Average",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 7d, fn: spread)\n  |> yield(name: \"energy_7d\")"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "decimals": 2,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 3, "color": "yellow"},
+                {"value": 4, "color": "green"}
+              ]
+            },
+            "mappings": [{"type": "special", "options": {"match": "null", "result": {"text": "Calculating..."}}}]
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "background"}
+      },
+      {
+        "id": 4,
+        "title": "Power Now",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /actual_power_z04/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "kwatt",
+            "decimals": 2,
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "value"}
+      },
+      {
+        "id": 5,
+        "title": "Energy Today",
+        "type": "stat",
+        "gridPos": {"x": 16, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "kwatth",
+            "decimals": 1,
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "value"}
+      },
+      {
+        "id": 6,
+        "title": "Heat Delivered Today",
+        "type": "stat",
+        "gridPos": {"x": 20, "y": 0, "w": 4, "h": 4},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "inlet = from(bucket: \"homeassistant\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\noutlet = from(bucket: \"homeassistant\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /outlet_water_temp_t03/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\njoin(\n  left: inlet,\n  right: outlet,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: 0.0698 * ${flow_rate} * (r._value - l._value)\n  })\n)\n|> integral(unit: 1h)\n|> map(fn: (r) => ({r with _value: r._value / 3600.0}))"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "kwatth",
+            "decimals": 1,
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "value"}
+      },
+      {
+        "id": 7,
+        "title": "Energy In vs Heat Out",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /actual_power_z04/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 15m, fn: mean, createEmpty: false)\n  |> map(fn: (r) => ({r with _value: r._value / 1000.0}))\n  |> yield(name: \"power\")"
+          },
+          {
+            "refId": "B",
+            "query": "inlet = from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 15m, fn: mean, createEmpty: false)\n\noutlet = from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /outlet_water_temp_t03/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 15m, fn: mean, createEmpty: false)\n\njoin(\n  left: inlet,\n  right: outlet,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: 0.0698 * ${flow_rate} * (r._value - l._value)\n  })\n)\n|> yield(name: \"heat\")"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {"lineWidth": 2, "fillOpacity": 10}
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "power"},
+              "properties": [
+                {"id": "unit", "value": "kwatt"},
+                {"id": "displayName", "value": "Electrical Power"},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}},
+                {"id": "custom.axisPlacement", "value": "left"}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "heat"},
+              "properties": [
+                {"id": "unit", "value": "kwatt"},
+                {"id": "displayName", "value": "Heat Output"},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}},
+                {"id": "custom.axisPlacement", "value": "right"}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi"},
+          "legend": {"displayMode": "list", "placement": "bottom", "calcs": ["mean", "last"]}
+        }
+      },
+      {
+        "id": 8,
+        "title": "COP Over Time with Ambient",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /ambient_temp_t05/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: ${interval}, fn: mean, createEmpty: false)\n  |> yield(name: \"ambient\")"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {"lineWidth": 2, "fillOpacity": 10}
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "ambient"},
+              "properties": [
+                {"id": "unit", "value": "celsius"},
+                {"id": "displayName", "value": "Ambient Temp"},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}},
+                {"id": "custom.axisPlacement", "value": "right"}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi"},
+          "legend": {"displayMode": "list", "placement": "bottom"}
+        }
+      },
+      {
+        "id": 9,
+        "title": "Pool Temp vs Setpoint",
+        "type": "gauge",
+        "gridPos": {"x": 0, "y": 12, "w": 6, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n  |> yield(name: \"pool\")"
+          },
+          {
+            "refId": "B",
+            "query": "from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /set_temp/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n  |> yield(name: \"setpoint\")"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "decimals": 1,
+            "min": 20,
+            "max": 35,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 20, "color": "blue"},
+                {"value": 26, "color": "green"},
+                {"value": 30, "color": "yellow"},
+                {"value": 32, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        }
+      },
+      {
+        "id": 10,
+        "title": "Thermal Lift (Pool - Ambient)",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 12, "w": 6, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "pool = from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n\nambient = from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /ambient_temp_t05/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()\n\njoin(\n  left: pool,\n  right: ambient,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: l._value - r._value\n  })\n)"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "decimals": 1,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 15, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "background"}
+      },
+      {
+        "id": 11,
+        "title": "Cost Today",
+        "type": "stat",
+        "gridPos": {"x": 12, "y": 12, "w": 6, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [
+          {
+            "refId": "A",
+            "query": "regular = from(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)\n  |> map(fn: (r) => ({r with _value: r._value * ${regular_tariff}}))\n  |> yield(name: \"regular_cost\")"
+          },
+          {
+            "refId": "B",
+            "query": "low = from(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_low_z06_l/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)\n  |> map(fn: (r) => ({r with _value: r._value * ${low_tariff}}))\n  |> yield(name: \"low_cost\")"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "reduce",
+            "options": {"reducers": ["sum"]}
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyZAR",
+            "decimals": 2,
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "value"}
+      },
+      {
+        "id": 12,
+        "title": "R/kWh-th (Cost per Thermal kWh)",
+        "type": "stat",
+        "gridPos": {"x": 18, "y": 12, "w": 6, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "// Simplified: Cost / Heat = (Energy × Tariff) / (Energy × COP)\n// = Tariff / COP\n// Using average tariff\navg_tariff = (${regular_tariff} + ${low_tariff}) / 2.0\n\n// Get COP 24h (placeholder - use actual from panel 2)\nfrom(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)\n  |> map(fn: (r) => ({r with _value: avg_tariff / 3.5}))\n  |> last()"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyZAR",
+            "decimals": 2,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 0.75, "color": "yellow"},
+                {"value": 1.00, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {"graphMode": "none", "colorMode": "background"}
+      },
+      {
+        "id": 13,
+        "title": "Flow Rate & Water ΔT",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "inlet = from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /inlet_water_temp_t02/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\noutlet = from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /outlet_water_temp_t03/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n\njoin(\n  left: inlet,\n  right: outlet,\n  on: [\"_time\"],\n  as: (l, r) => ({\n    _time: l._time,\n    _value: r._value - l._value\n  })\n)\n|> aggregateWindow(every: ${interval}, fn: mean, createEmpty: false)"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "celsius",
+            "custom": {"lineWidth": 2, "fillOpacity": 20},
+            "color": {"mode": "palette-classic"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "red"},
+                {"value": 1, "color": "yellow"},
+                {"value": 2, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "multi"},
+          "legend": {"displayMode": "list", "placement": "bottom"}
+        }
+      },
+      {
+        "id": 14,
+        "title": "Operating Mode Timeline",
+        "type": "state-timeline",
+        "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /mode/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "options": {"heat": {"color": "red", "text": "Heating"}}},
+              {"type": "value", "options": {"cool": {"color": "blue", "text": "Cooling"}}},
+              {"type": "value", "options": {"auto": {"color": "green", "text": "Auto"}}},
+              {"type": "value", "options": {"off": {"color": "dark-gray", "text": "Off"}}}
+            ]
+          }
+        }
+      },
+      {
+        "id": 15,
+        "title": "Daily Energy: Input vs Output vs COP",
+        "type": "barchart",
+        "gridPos": {"x": 0, "y": 26, "w": 24, "h": 8},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /cumulative_power_consumption_z06/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread, createEmpty: false)\n  |> yield(name: \"elec\")"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "kwatth",
+            "color": {"mode": "palette-classic"}
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "Compressor Duty Cycle %",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 34, "w": 8, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "runtime = from(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /compressor_operational_time_z08/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)\n  |> map(fn: (r) => ({r with _value: (r._value / 24.0) * 100.0}))"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 1,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 50, "color": "yellow"},
+                {"value": 80, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "background"}
+      },
+      {
+        "id": 17,
+        "title": "Total Runtime Today",
+        "type": "stat",
+        "gridPos": {"x": 8, "y": 34, "w": 8, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -1d)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /compressor_operational_time_z08/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> aggregateWindow(every: 1d, fn: spread)"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "h",
+            "decimals": 1,
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {"graphMode": "area", "colorMode": "value"}
+      },
+      {
+        "id": 18,
+        "title": "Current Compressor Frequency",
+        "type": "gauge",
+        "gridPos": {"x": 16, "y": 34, "w": 8, "h": 6},
+        "datasource": {"uid": "ce1ttjampzta8a", "type": "influxdb"},
+        "targets": [{
+          "refId": "A",
+          "query": "from(bucket: \"homeassistant\")\n  |> range(start: -5m)\n  |> filter(fn: (r) => r[\"entity_id\"] =~ /aloha_sensory_aquatics/ and r[\"entity_id\"] =~ /comp_output_frequency_o07/)\n  |> filter(fn: (r) => r[\"_field\"] == \"value\")\n  |> last()"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "hertz",
+            "min": 0,
+            "max": 120,
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "dark-gray"},
+                {"value": 30, "color": "green"},
+                {"value": 80, "color": "yellow"},
+                {"value": 100, "color": "red"}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  },
+  "overwrite": true
+}
