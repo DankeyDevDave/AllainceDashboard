@@ -54,6 +54,7 @@ POWER_MODE_ON = "1"
 HEADERS = {"Content-Type": "application/json; charset=utf-8"}
 
 API_MAX_ATTEMPTS = 3
+API_RETRY_DELAY_SECONDS = 1
 
 DATA_ITEM_DEVICES = "device"
 DATA_ITEM_LOGIN_DETAILS = "login-details"

@@ -1,5 +1,31 @@
 # Changelog
 
+## 3.1.1 (Unreleased)
+
+### Security Improvements
+- **CRITICAL**: Enabled SSL certificate verification in API requests (was `ssl=False`, now `ssl=True`)
+- Fixed retry timing bug that caused 16.67 minute delays instead of 1 second (`await sleep(1000)` → `await sleep(1)`)
+
+### Code Quality Improvements
+- Extracted magic numbers to constants (added `API_RETRY_DELAY_SECONDS`)
+- Implemented exponential backoff for API retries (1s → 2s → 4s progression)
+- Replaced broad `Exception` handlers with specific error types:
+  - Network errors: `ClientResponseError`, `OSError`, `TimeoutError`, `ConnectionError`
+  - Data parsing errors: `KeyError`, `ValueError`, `TypeError`
+- Added contextual error logging with appropriate log levels (warning for network, error for unexpected)
+
+### Testing
+- Created comprehensive test suite for `AquaTempAPI` manager with 20+ test cases
+- Added tests for SSL verification, retry logic, exponential backoff, token management
+- Added pytest configuration and fixtures
+- Test coverage for error handling and edge cases
+
+### Dashboard Improvements
+- Added TypeScript interface definitions for type safety
+- Implemented `lastUpdated` prop for metric cards
+- Enhanced UI layout with flex containers and CardFooter components
+- Improved overall dashboard consistency and maintainability
+
 ## 3.0.37
 
 - Initialize data using `async_request_refresh` instead of `async_config_entry_first_refresh` to remove warning message

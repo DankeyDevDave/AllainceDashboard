@@ -1,0 +1,23 @@
+# Commands to run in Home Assistant Advanced SSH & Web Terminal
+# Copy and paste these one at a time
+
+# 1. Navigate to the config manager directory
+cd /config/custom_components/aqua_temp/managers
+
+# 2. Backup the current file
+cp aqua_temp_config_manager.py aqua_temp_config_manager.py.backup
+
+# 3. Apply the state_class fix
+sed -i '/native_unit_of_measurement=data_item.get("unit_of_measurement"),/a\                    state_class=data_item.get("state_class"),' aqua_temp_config_manager.py
+
+# 4. Verify the fix was applied
+echo "Checking if fix was applied..."
+grep -n "state_class=data_item" aqua_temp_config_manager.py
+
+# 5. Show the context around the fix
+echo ""
+echo "Context around the fix:"
+grep -B2 -A2 "state_class=data_item" aqua_temp_config_manager.py
+
+# If you see the line with state_class, the fix is applied!
+# Next: Restart Home Assistant from the web UI

@@ -1,4 +1,5 @@
 """Platform for climate integration."""
+
 from asyncio import sleep
 from copy import copy
 import hashlib
@@ -21,6 +22,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from ..common.api_types import DEVICE_LISTS, DEVICE_REQUEST_PARAMETERS, APIParam
 from ..common.consts import (
     API_MAX_ATTEMPTS,
+    API_RETRY_DELAY_SECONDS,
     CONFIG_HVAC_MAXIMUM,
     CONFIG_HVAC_MINIMUM,
     CONFIG_HVAC_SET,
@@ -111,13 +113,23 @@ class AquaTempAPI:
                     "Failed to login, Please update credentials and try again"
                 )
 
-        except Exception as ex:
+        except (ClientResponseError, OSError, TimeoutError) as ex:
             exc_type, exc_obj, tb = sys.exc_info()
             line_number = tb.tb_lineno
 
             _LOGGER.warning(
                 f"Failed to initialize session, Error: {ex}, Line: {line_number}"
             )
+
+        except Exception as ex:
+            exc_type, exc_obj, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+
+            _LOGGER.error(
+                f"Unexpected error during session initialization, Error: {ex}, Line: {line_number}"
+            )
+            if throw_error:
+                raise
 
     async def _connect(self):
         if self._token is None:
@@ -161,15 +173,25 @@ class AquaTempAPI:
 
             error = itex
 
+        except (ClientResponseError, OSError, TimeoutError, ConnectionError) as ex:
+            exc_type, exc_obj, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+
+            _LOGGER.warning(f"Network error during update: {ex}")
+            error = ex
+
         except Exception as ex:
             exc_type, exc_obj, tb = sys.exc_info()
             line_number = tb.tb_lineno
 
+            _LOGGER.error(f"Unexpected error during update: {ex}")
             error = ex
 
         if error is not None:
             if attempt < API_MAX_ATTEMPTS:
-                await sleep(1000)
+                # Exponential backoff: 1s, 2s, 4s
+                delay = API_RETRY_DELAY_SECONDS * (2 ** (attempt - 1))
+                await sleep(delay)
 
                 await self._internal_update(attempt + 1)
 
@@ -387,12 +409,23 @@ class AquaTempAPI:
                         operation, request_data, f"{error_code}: {error_msg}"
                     )
 
+        except (ClientResponseError, OSError, TimeoutError, ConnectionError) as ex:
+            _LOGGER.warning(f"Network error during operation {operation}: {ex}")
+            error = ex
+
+        except (KeyError, ValueError, TypeError) as ex:
+            _LOGGER.error(f"Data parsing error during operation {operation}: {ex}")
+            error = ex
+
         except Exception as ex:
+            _LOGGER.error(f"Unexpected error during operation {operation}: {ex}")
             error = ex
 
         if error is not None:
             if attempt < API_MAX_ATTEMPTS:
-                await sleep(1000)
+                # Exponential backoff: 1s, 2s, 4s
+                delay = API_RETRY_DELAY_SECONDS * (2 ** (attempt - 1))
+                await sleep(delay)
 
                 await self._connect()
 
@@ -516,11 +549,31 @@ class AquaTempAPI:
             if token is not None:
                 await self._load_user_info()
 
+        except (ClientResponseError, OSError, TimeoutError, ConnectionError) as ex:
+            exc_type, exc_obj, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+
+            _LOGGER.error(
+                f"Network error during login, Error: {ex}, Line: {line_number}"
+            )
+            self.set_token()
+
+        except (KeyError, ValueError) as ex:
+            exc_type, exc_obj, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+
+            _LOGGER.error(
+                f"Invalid response format during login, Error: {ex}, Line: {line_number}"
+            )
+            self.set_token()
+
         except Exception as ex:
             exc_type, exc_obj, tb = sys.exc_info()
             line_number = tb.tb_lineno
 
-            _LOGGER.error(f"Failed to login, Error: {ex}, Line: {line_number}")
+            _LOGGER.error(
+                f"Unexpected error during login, Error: {ex}, Line: {line_number}"
+            )
             self.set_token()
 
         if self._token is None:
@@ -589,7 +642,7 @@ class AquaTempAPI:
             _LOGGER.info(f"Sending request to control device, Data: {data}")
 
         async with self._session.post(
-            url, headers=self._headers, json=data, ssl=False
+            url, headers=self._headers, json=data, ssl=True
         ) as response:
             response.raise_for_status()
 

@@ -1,0 +1,40 @@
+================================================================================
+COPY AND PASTE THESE COMMANDS INTO YOUR HOME ASSISTANT TERMINAL
+================================================================================
+
+Command 1: Navigate to the directory
+-----------------------------------
+cd /config/custom_components/aqua_temp/managers
+
+Command 2: Backup the file
+-----------------------------------
+cp aqua_temp_config_manager.py aqua_temp_config_manager.py.backup
+
+Command 3: Apply the fix
+-----------------------------------
+sed -i '/native_unit_of_measurement=data_item.get("unit_of_measurement"),/a\                    state_class=data_item.get("state_class"),' aqua_temp_config_manager.py
+
+Command 4: Verify the fix
+-----------------------------------
+grep -n "state_class=data_item" aqua_temp_config_manager.py
+
+Command 5: Show context (optional)
+-----------------------------------
+grep -B2 -A2 "state_class=data_item" aqua_temp_config_manager.py
+
+================================================================================
+EXPECTED OUTPUT after Command 4:
+-----------------------------------
+402:                    state_class=data_item.get("state_class"),
+
+If you see this line, the fix is applied successfully! ✅
+
+NEXT STEPS:
+-----------------------------------
+1. Type 'exit' to leave the terminal
+2. Go to: Settings → System → Restart
+3. Wait for Home Assistant to restart (1-2 minutes)
+4. From your Mac, run: python3 check_ha_version.py
+
+The state_class should now show 'measurement' or 'total_increasing' instead of 'N/A'
+================================================================================
